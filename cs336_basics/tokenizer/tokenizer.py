@@ -23,6 +23,7 @@ class Tokenizer:
                 self.token2special[token] = byte
         self.special2token = {v:k for k,v in self.token2special.items()}
         
+        self.pat = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
         self.max_workers = max_workers
 
     def encode(self,text:str) -> list[int]:
@@ -48,27 +49,29 @@ class Tokenizer:
         for text in iterable:
             yield from self.encode(text)
 
-    def single_encode(self,text:str) -> list[int]:
-        if text == "":
+    def single_encode(self,raw_text:str) -> list[int]:
+        if raw_text == "":
             return []
-        if text in self.special_tokens:
-            return [self.special2token[text.encode('utf-8',errors='replace')]]
+        if raw_text in self.special_tokens:
+            return [self.special2token[raw_text.encode('utf-8',errors='replace')]]
         
-        bytes_stream = []
-        for ch in text:
-            bytes_stream.append(self.bytes2token[ch.encode()])
+        res = []
+        for text in re.findall(self.pat,raw_text):
+            bytes_stream = []
+            for ch in text:
+                bytes_stream.append(self.bytes2token[ch.encode()])
 
-        while True:
-            stats = {}
-            stats = updated_stats(stats,bytes_stream)
-            merged_pair = min(
-                self.pair2token,
-                key = lambda pair : stats.get(pair,float("inf"))
-            )
-            if stats.get(merged_pair,float("inf")) == float("inf") : break
-            bytes_stream = merge(bytes_stream,merged_pair,self.pair2token[merged_pair])
-            
-        return bytes_stream
+            while True:
+                stats = {}
+                stats = updated_stats(stats,bytes_stream)
+                merged_pair = min(
+                    self.pair2token,
+                    key = lambda pair : stats.get(pair,float("inf"))
+                )
+                if stats.get(merged_pair,float("inf")) == float("inf") : break
+                bytes_stream = merge(bytes_stream,merged_pair,self.pair2token[merged_pair])
+            res.extend(bytes_stream)
+        return res
     
     def decode(self,bytes_stream:list[int]) -> str:
         utf_stream = []
