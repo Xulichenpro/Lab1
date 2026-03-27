@@ -102,18 +102,19 @@ def train_bpe(
                 if token_id != id : continue
                 if i >= 1 :                 
                     global_stats[(bytes_stream[i - 1],token_id)] = cnt + global_stats.get((bytes_stream[i - 1],token_id),0)
-                    if bytes_stream[i - 1] != token_id:
+                    if bytes_stream[i - 1] != token_id:                      
                         global_stats[(bytes_stream[i - 1],merged_pair[0])] = global_stats[(bytes_stream[i - 1],merged_pair[0])] - cnt
+                        if global_stats[(bytes_stream[i - 1],merged_pair[0])] == 0:
+                            del global_stats[(bytes_stream[i - 1],merged_pair[0])]
                     else:
                         global_stats[(token_id,token_id)] = global_stats.get((token_id,token_id),0) + cnt
-                    if global_stats[(bytes_stream[i - 1],merged_pair[0])] == 0:
-                        del global_stats[(bytes_stream[i - 1],merged_pair[0])]
+                    
                 if i <= len(bytes_stream) - 2:
                     global_stats[(token_id,bytes_stream[i + 1])] = cnt + global_stats.get((token_id,bytes_stream[i + 1]),0)
                     if bytes_stream[i + 1] != token_id:
                         global_stats[(merged_pair[1],bytes_stream[i + 1])] -= cnt
-                    if global_stats[(merged_pair[1],bytes_stream[i + 1])] == 0:
-                        del global_stats[(merged_pair[1],bytes_stream[i + 1])] 
+                        if global_stats[(merged_pair[1],bytes_stream[i + 1])] == 0:
+                            del global_stats[(merged_pair[1],bytes_stream[i + 1])] 
             print(global_stats)      
             new_cache[tuple(bytes_stream)] = new_cache.get(tuple(bytes_stream),0) + cnt
             del global_cache[tuple(old_bytes_stream)]
