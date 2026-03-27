@@ -17,7 +17,7 @@ def train_bpe(
         input_path:str,
         vocab_size:int,
         special_tokens:list[str],
-        num_processes = 8,
+        num_processes = 16,
 ) -> tuple[dict[int,bytes],list[tuple[bytes,bytes]]]:
     assert vocab_size >= LEVEL + 1,"unvalid vocab size"
 
@@ -38,8 +38,16 @@ def train_bpe(
             #print(_split_by_special_tokens(chunk,SPECIAL_TOKENS))
             chunks.extend(_split_by_special_tokens(chunk,special_tokens))
     #print(chunks)
-    with Pool(len(chunks)) as pool:
-        stats_cache_list = pool.starmap(_pretokenize,[(chunk,) for chunk in chunks])
+    stats_cache_list = []
+    start = 0
+    while start < len(chunks):
+        with Pool(num_processes) as pool:
+            stats_cache_list = pool.starmap(
+                _pretokenize,
+                [(chunks[start + i] if start + i < len(chunks) else "",) 
+                 for i in range(num_processes)]
+            )
+        start += num_processes
     stats_cache_list = [(stats,cache) for stats,cache in stats_cache_list if stats]
 
     for stats,cache in stats_cache_list:
