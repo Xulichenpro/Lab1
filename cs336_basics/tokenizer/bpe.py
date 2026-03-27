@@ -1,9 +1,13 @@
 from pathlib import Path
 
-def updated_stats(stats:dict[tuple,int],bytes:list) -> dict[tuple,int]:
-    for px,py in zip(bytes,bytes[1:]):
+def updated_stats(stats:dict[tuple,int],bytes_stream:list,cache:dict[tuple,dict] = None) -> dict[tuple,int]:
+    for id,(px,py) in enumerate(zip(bytes_stream,bytes_stream[1:])):
         stats[(px,py)] = stats.get((px,py),0) + 1
-    return stats
+        if cache is not None:
+            cache[(px,py)] = cache.get((px,py),{})
+            cache[(px,py)][tuple(bytes_stream)] = cache[(px,py)].get(tuple(bytes_stream),0) + 1
+    
+    return stats,cache
 
 def merge(bytes:list,merge_id:tuple,new_id:int) -> list:
     new_bytes = []
@@ -19,13 +23,6 @@ def merge(bytes:list,merge_id:tuple,new_id:int) -> list:
     
     return new_bytes
 
-def get_max_key(stats:dict[tuple,int]) -> tuple:
-    pair = max(
-        stats,
-        key = lambda p : (stats[p],p)
-    )
-    return pair
-
 def main():
     text_path = Path(__file__).parent / "test.txt"
     with open(text_path,'r') as f:
@@ -36,9 +33,6 @@ def main():
     print(f"byte stream:{bytes}")
     stats = updated_stats({},bytes)
     print(f"stats:{stats}")
-
-    print(get_max_key(stats))
-    print(f"final : {merge(bytes,get_max_key(stats),256)}")
 
 if __name__ == "__main__":
     main()

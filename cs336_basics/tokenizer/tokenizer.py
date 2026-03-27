@@ -63,7 +63,7 @@ class Tokenizer:
 
             while True:
                 stats = {}
-                stats = updated_stats(stats,bytes_stream)
+                stats,_ = updated_stats(stats,bytes_stream)
                 merged_pair = min(
                     self.pair2token,
                     key = lambda pair : stats.get(pair,float("inf"))
