@@ -25,6 +25,7 @@ def scaled_dot_product_attention(
     )
     pre_soft = pre_soft / math.sqrt(d_k)
     
+    # **Note**
     if masked is not None:
     # 假设 masked 是布尔类型（True表示保留，False表示遮蔽）
         pre_soft = pre_soft.masked_fill(masked == 0, float('-inf'))
@@ -66,8 +67,12 @@ class MultiheadAttention(nn.Module):
             x,
             "batch_size seq_len d_model -> 1 batch_size seq_len d_model",
         )
+
+        # **Note**
         t = torch.arange(x.shape[-2], device=self.device).float().unsqueeze(dim = 0).unsqueeze(dim = 0)
         t = token_positions if token_positions is not None else t
+        
+        # **Note**
         wq = rearrange(
             self.Q.weight,
             "(h d_k) d_model -> h 1 d_k d_model",
@@ -86,7 +91,6 @@ class MultiheadAttention(nn.Module):
             h = self.h,
             d_v = self.d_v,
         )
-        #print(x.shape,wq.shape)
 
         Q = einsum(          
             x,

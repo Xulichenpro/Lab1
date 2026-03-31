@@ -26,5 +26,6 @@ class Embedding(nn.Module):
         )
         embedding_init(self.weight)
 
+    # **Note**
     def forward(self,token_ids:torch.Tensor):      
         return self.weight[token_ids]
