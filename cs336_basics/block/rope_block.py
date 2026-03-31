@@ -18,15 +18,13 @@ class RoPE(nn.Module):
         self.max_seq_len = max_seq_len
 
     def forward(self,x:torch.Tensor,token_positions:torch.Tensor):
-        batch_size = x.shape[0]
-        seq_len = x.shape[1]
-        res = torch.empty(batch_size,seq_len,self.d,device=self.device)
+        res = torch.zeros_like(x,device=self.device)
 
         for i in range(self.d // 2):
             theta = token_positions / math.pow(self.theta,2 * i / self.d)
             sin = torch.sin(theta)
             cos = torch.cos(theta)
-            res[:,:,2 * i] = cos * x[:,:,2 * i] - sin * x[:,:,2 * i + 1]
-            res[:,:,2 * i + 1] = sin * x[:,:,2 * i] + cos * x[:,:,2 * i + 1]
+            res[...,2 * i] = cos * x[...,2 * i] - sin * x[...,2 * i + 1]
+            res[...,2 * i + 1] = sin * x[...,2 * i] + cos * x[...,2 * i + 1]
         
         return res

@@ -156,7 +156,12 @@ def run_multihead_self_attention(
         Float[Tensor, " ... sequence_length d_out"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    raise NotImplementedError
+    multihead = block.attention_block.MultiheadAttention(d_model,num_heads)
+    multihead.Q.weight.data = q_proj_weight
+    multihead.K.weight.data = k_proj_weight
+    multihead.V.weight.data = v_proj_weight
+    multihead.WO.weight.data = o_proj_weight
+    return multihead.forward(in_features)
 
 
 def run_multihead_self_attention_with_rope(
@@ -196,7 +201,13 @@ def run_multihead_self_attention_with_rope(
         Float[Tensor, " ... sequence_length d_out"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    raise NotImplementedError
+    multihead = block.attention_block.MultiheadAttention(d_model,num_heads)
+    multihead.Q.weight.data = q_proj_weight
+    multihead.K.weight.data = k_proj_weight
+    multihead.V.weight.data = v_proj_weight
+    multihead.WO.weight.data = o_proj_weight
+    rope = block.rope_block.RoPE(theta,d_model//num_heads,max_seq_len)
+    return multihead.forward(in_features,rope=rope,token_positions=token_positions)
 
 
 def run_rope(
@@ -292,8 +303,18 @@ def run_transformer_block(
         Float[Tensor, "batch sequence_length d_model"] Tensor with the output of
         running the Transformer block on the input features while using RoPE.
     """
-    raise NotImplementedError
-
+    trans = block.transform_block.Transformer(d_model,num_heads,d_ff)
+    rope = block.rope_block.RoPE(theta,d_model // num_heads,max_seq_len)
+    trans.multihead.Q.weight.data = weights["attn.q_proj.weight"]
+    trans.multihead.K.weight.data = weights["attn.k_proj.weight"]
+    trans.multihead.V.weight.data = weights["attn.v_proj.weight"]
+    trans.multihead.WO.weight.data = weights["attn.output_proj.weight"]
+    trans.rms1.weight.data = weights["ln1.weight"]
+    trans.rms2.weight.data = weights["ln2.weight"]
+    trans.swiglu.linear_unit1.weight.data = weights["ffn.w1.weight"]
+    trans.swiglu.linear_unit2.weight.data = weights["ffn.w2.weight"]
+    trans.swiglu.linear_unit3.weight.data = weights["ffn.w3.weight"]
+    return trans.forward(in_features,rope)
 
 def run_transformer_lm(
     vocab_size: int,
@@ -374,7 +395,34 @@ def run_transformer_lm(
         Float[Tensor, "batch_size sequence_length vocab_size"]: Tensor with the predicted unnormalized
         next-word distribution for each token.
     """
-    raise NotImplementedError
+    lm = block.lm.TransformerLM(
+        vocab_size=vocab_size,
+        context_length=context_length,
+        num_layers=num_layers,
+        d_model=d_model,
+        num_heads=num_heads,
+        d_ff=d_ff,
+    )
+    rope = block.rope_block.RoPE(
+        theta=rope_theta,
+        d_k=d_model // num_heads,
+        max_seq_len=context_length,
+    )
+    lm.embedding.weight.data = weights['token_embeddings.weight']
+    for num_layer in range(num_layers):
+        trans = lm.trans_blocks[num_layer]
+        trans.multihead.Q.weight.data = weights[f"layers.{num_layer}.attn.q_proj.weight"]
+        trans.multihead.K.weight.data = weights[f"layers.{num_layer}.attn.k_proj.weight"]
+        trans.multihead.V.weight.data = weights[f"layers.{num_layer}.attn.v_proj.weight"]
+        trans.multihead.WO.weight.data = weights[f"layers.{num_layer}.attn.output_proj.weight"]
+        trans.rms1.weight.data = weights[f"layers.{num_layer}.ln1.weight"]
+        trans.rms2.weight.data = weights[f"layers.{num_layer}.ln2.weight"]
+        trans.swiglu.linear_unit1.weight.data = weights[f"layers.{num_layer}.ffn.w1.weight"]
+        trans.swiglu.linear_unit2.weight.data = weights[f"layers.{num_layer}.ffn.w2.weight"]
+        trans.swiglu.linear_unit3.weight.data = weights[f"layers.{num_layer}.ffn.w3.weight"]
+    lm.final_rms.weight.data = weights["ln_final.weight"]
+    lm.lm_head.weight.data = weights["lm_head.weight"]
+    return lm.forward(in_indices,rope)
 
 
 def run_rmsnorm(

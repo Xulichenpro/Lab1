@@ -36,21 +36,87 @@ def scaled_dot_product_attention(
         "... seq_len1 seq_len2,... seq_len2 d_v ->... seq_len1 d_v"
     )
 
-class MutiheadAttention(nn.Module):
+class MultiheadAttention(nn.Module):
     def __init__(
         self,
         d_model:int,
         num_heads:int,
+        device:torch.device = None
     ):
         super().__init__()
+
+        self.device = device if device else 'cpu'
 
         self.d_model = d_model
         self.h = num_heads
         self.d_k = self.d_model // self.h
         self.d_v = self.d_k
-        self.WO = Linear(in_features=self.d_model,out_features=(self.h * self.d_k))
-        self.Q = Linear(in_features=self.d_model,out_features=(self.h * self.d_k))
-        self.K = Linear(in_features=self.d_model,out_features=(self.h * self.d_k))
-        self.V = Linear(in_features=self.d_model,out_features=(self.h * self.d_v))
-        
+        self.WO = Linear(in_features=self.d_model,out_features=(self.h * self.d_k),device = self.device)
+        self.Q = Linear(in_features=self.d_model,out_features=(self.h * self.d_k),device = self.device)
+        self.K = Linear(in_features=self.d_model,out_features=(self.h * self.d_k),device = self.device)
+        self.V = Linear(in_features=self.d_model,out_features=(self.h * self.d_v),device = self.device)
+
+    def forward(
+        self,
+        x:torch.Tensor,
+        rope:RoPE = None,
+        token_positions:torch.Tensor = None,
+    ) -> torch.Tensor:
+        x = rearrange(
+            x,
+            "batch_size seq_len d_model -> 1 batch_size seq_len d_model",
+        )
+        t = torch.arange(x.shape[-2], device=self.device).float().unsqueeze(dim = 0).unsqueeze(dim = 0)
+        t = token_positions if token_positions is not None else t
+        wq = rearrange(
+            self.Q.weight,
+            "(h d_k) d_model -> h 1 d_k d_model",
+            h = self.h,
+            d_k = self.d_k,
+        )
+        wk = rearrange(
+            self.K.weight,
+            "(h d_k) d_model -> h 1 d_k d_model",
+            h = self.h,
+            d_k = self.d_k,
+        )
+        wv = rearrange(
+            self.V.weight,
+            "(h d_v) d_model -> h 1 d_v d_model",
+            h = self.h,
+            d_v = self.d_v,
+        )
+        #print(x.shape,wq.shape)
+
+        Q = einsum(          
+            x,
+            wq,
+            "one batch_size seq_len d_model,h one d_k d_model -> h batch_size seq_len d_k",
+        )
+        K = einsum(          
+            x,
+            wk,
+            "one batch_size seq_len d_model,h one d_k d_model -> h batch_size seq_len d_k",
+        )
+        V = einsum(          
+            x,
+            wv,
+            "one batch_size seq_len d_model,h one d_v d_model -> h batch_size seq_len d_v",
+        )        
+
+        if rope is not None:
+            Q = rope.forward(Q,t)
+            K = rope.forward(K,t)
+
+        mask = torch.tril(torch.ones(x.shape[-2], x.shape[-2],device=self.device))
+        mask = mask.to(torch.bool)
+
+        attention = scaled_dot_product_attention(Q,K,V,masked=mask)
+        attention = rearrange(
+            attention,
+            "h batch_size seq_len d_v -> batch_size seq_len (h d_v)"
+        )
+        return self.WO.forward(attention)
+
+
 
