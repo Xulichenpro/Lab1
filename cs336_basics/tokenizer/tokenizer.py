@@ -4,6 +4,7 @@ from typing import Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor,as_completed
 
 from .bpe import updated_stats, merge
+from .serialize_bpe import load_pkl
 
 LEVEL = 255
 
@@ -16,7 +17,10 @@ class Tokenizer:
             (self.bytes2token[px],self.bytes2token[py]):self.bytes2token[px + py] 
             for px,py in self.merges
         }
+        
+        # **Note**
         self.special_tokens = special_tokens or []
+        self.special_tokens.sort(key=len, reverse=True)
         self.token2special = {}
         for byte,token in self.bytes2token.items():
             if byte.decode("utf-8",errors="replace") in self.special_tokens:
@@ -25,6 +29,12 @@ class Tokenizer:
         
         self.pat = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
         self.max_workers = max_workers
+    
+    @classmethod
+    def from_path(cls,vocab_filepath:str,merges_filepath:str,special_tokens:list[str] = None):
+        vocab = load_pkl(vocab_filepath,'vocab')
+        merges = load_pkl(merges_filepath,'merges')
+        return cls(vocab,merges,special_tokens)
 
     def encode(self,text:str) -> list[int]:
         texts = self._split_by_special_keep(text)
@@ -56,19 +66,25 @@ class Tokenizer:
             return [self.special2token[raw_text.encode('utf-8',errors='replace')]]
         
         res = []
-        for text in re.findall(self.pat,raw_text):
-            bytes_stream = []
-            for ch in text:
-                bytes_stream.append(self.bytes2token[ch.encode()])
+        for text in re.split(f"({self.pat})", raw_text):
+            bytes_stream = [self.bytes2token[byte.to_bytes()] for byte in list(text.encode('utf-8'))]
 
             while True:
                 stats = {}
                 stats,_ = updated_stats(stats,bytes_stream)
-                merged_pair = min(
-                    self.pair2token,
-                    key = lambda pair : stats.get(pair,float("inf"))
-                )
-                if stats.get(merged_pair,float("inf")) == float("inf") : break
+
+                merged_pair = None
+                for px,py in self.merges:
+                    px = self.bytes2token[px]
+                    py = self.bytes2token[py]
+
+                    if (px,py) in stats.keys():
+                        merged_pair = (px,py)
+                        break
+                
+                if not merged_pair:
+                    break
+
                 bytes_stream = merge(bytes_stream,merged_pair,self.pair2token[merged_pair])
             res.extend(bytes_stream)
         return res
