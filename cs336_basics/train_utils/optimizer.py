@@ -7,18 +7,18 @@ class AdamW(torch.optim.Optimizer):
     def __init__(
         self,
         params,
-        alpha: float = 1e-5,
-        beta: tuple[float] = (0.9,0.999),
-        epsilon: float = 1e-5,
+        lr: float = 1e-5,
+        betas: tuple[float] = (0.9,0.999),
+        eps: float = 1e-5,
         weight_decay: float = 1e-2,
     ):
-        if alpha < 0:
+        if lr < 0:
             raise ValueError('The learning rate should be positive.')
         
         defaults = {
-            "lr":alpha,
-            "beta":beta,
-            "epsilon":epsilon,
+            "lr":lr,
+            "beta":betas,
+            "epsilon":eps,
             "weight_decay":weight_decay,
         }
 
