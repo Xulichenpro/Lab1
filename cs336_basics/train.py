@@ -1,3 +1,4 @@
+import os
 import yaml
 import torch
 import logging
@@ -10,6 +11,7 @@ from datetime import datetime
 from einops import rearrange
 
 from tokenizer.tokenizer import Tokenizer
+from tokenizer.pretokenizer import find_chunk_boundaries
 from block.rope_block import RoPE
 from block.lm import TransformerLM
 from train_utils.dataloader import data_loader
@@ -96,11 +98,26 @@ def lazy_load(
 ) -> np.memmap:
     if not cache_path.exists():
         logger.info(f"✏️  Tokenizing {file_path.name} → {cache_path.name} ...")
-        with open(file_path,'r') as f:
-            text = f.read()
-        tokens = np.array(tokenizer.encode(text))
-        tokens.tofile(cache_path,dtype=np.uint16)
-        logger.info(f"💾 Saved {len(tokens):,} tokens to {cache_path.name}")
+        
+        tokens_len = 0
+            
+        with open(file_path, 'rb') as f:
+            boundaries = find_chunk_boundaries(f, os.cpu_count(), b"<|endoftext|>")        
+            # 关键修改：以追加二进制模式 ('ab') 先打开缓存文件
+            with open(cache_path, 'ab') as cache_f: 
+                for start, end in zip(boundaries[:-1], boundaries[1:]):
+                    f.seek(start)
+                    logger.info(f"⚙️  Reading from {file_path}...")
+                    chunk = f.read(end - start).decode("utf-8", errors="ignore")              
+                    tokens = np.array(tokenizer.encode(chunk), dtype=np.uint16)                  
+                    # 将文件句柄 cache_f 传给 tofile，实现追加
+                    tokens.tofile(cache_f)                    
+                    tokens_len += len(tokens)   
+                    logger.info(f"🧠 Have encoded {tokens_len} tokens")   
+        # with open(file_path,'r') as f:
+        #     text = f.read()
+   
+        logger.info(f"💾 Saved {tokens_len:,} tokens to {cache_path.name}")
     else:
         logger.info(f"✅ Cache found: {cache_path.name}")
     return np.memmap(cache_path, dtype=np.uint16, mode='r')
@@ -130,7 +147,13 @@ def main():
         f"(batch={batch_size}, ctx={context_length}, tokens={MAX_TOTAL_TOKENS:,})"
     )
    
-    tokenizer = Tokenizer.from_path(VOCAB_PATH,MERGES_PATH,special_tokens=SPECIAL_TOKENS)
+    tokenizer = Tokenizer.from_path(
+        VOCAB_PATH,
+        MERGES_PATH,
+        special_tokens=SPECIAL_TOKENS,
+        logger = logger,
+        max_workers = os.cpu_count()
+    )
     lm = TransformerLM(
         device=device,
         **hyper_params["TransformerLM"],       
@@ -225,10 +248,11 @@ def main():
                     f"lr={lr:.2e} "
                     f"tok/s={tokens_per_sec:,.0f} "
                     f"elapsed={elapsed:.1f}s"
-                )
-
-                draw_loss_curve(train_losses,val_losses)
+                )   
             lm.train()
+        
+        if step % 1000 == 0:
+            draw_loss_curve(train_losses,val_losses)
     
     total_time = time.time() - t_start
     logger.info(

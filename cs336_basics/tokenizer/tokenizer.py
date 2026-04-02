@@ -1,4 +1,5 @@
 import regex as re
+import logging
 
 from typing import Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor,as_completed
@@ -9,7 +10,14 @@ from .serialize_bpe import load_pkl
 LEVEL = 255
 
 class Tokenizer:
-    def __init__(self,vocab:dict[int,bytes],merges:list[tuple],special_tokens:list[str] = None,max_workers = 10):
+    def __init__(
+        self,
+        vocab:dict[int,bytes],
+        merges:list[tuple],
+        special_tokens:list[str] = None,
+        max_workers = 10,
+        logger:logging.Logger = None,
+    ):
         self.token2bytes = vocab
         self.bytes2token = {v:k for k,v in self.token2bytes.items()}
         self.merges = merges
@@ -29,12 +37,19 @@ class Tokenizer:
         
         self.pat = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
         self.max_workers = max_workers
+        self.logger = logger
     
     @classmethod
-    def from_path(cls,vocab_filepath:str,merges_filepath:str,special_tokens:list[str] = None):
+    def from_path(
+        cls,
+        vocab_filepath:str,
+        merges_filepath:str,
+        special_tokens:list[str] = None,
+        **kwargs,
+    ):
         vocab = load_pkl(vocab_filepath,'vocab')
         merges = load_pkl(merges_filepath,'merges')
-        return cls(vocab,merges,special_tokens)
+        return cls(vocab,merges,special_tokens,**kwargs)
 
     def encode(self,text:str) -> list[int]:
         texts = self._split_by_special_keep(text)
@@ -66,6 +81,7 @@ class Tokenizer:
             return [self.special2token[raw_text.encode('utf-8',errors='replace')]]
         
         res = []
+
         for text in re.split(f"({self.pat})", raw_text):
             bytes_stream = [self.bytes2token[byte.to_bytes()] for byte in list(text.encode('utf-8'))]
 
